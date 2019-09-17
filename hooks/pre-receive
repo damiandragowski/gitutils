@@ -1,0 +1,49 @@
+#!/bin/bash
+# No commit macro on server side
+# put file into hooks/ directory on server side
+# change permission to file to execute chmod +x pre-receive
+# every commit to repository will run this script
+# authoer damian.dragowski@gmail.com
+
+TEMPDIR=`mktemp -d`
+
+echo "### Ensure changes follow our code style and endline convention####"
+
+oldrev=$1
+newrev=$2
+refname=$3
+NULL_COMMIT=$(printf '0%.0s' {1..40})
+
+while read oldrev newrev refname; do
+  if [[ "$newrev" = $NULL_COMMIT ]]; then
+    continue;
+  fi
+
+  if [[ "$oldrev" = $NULL_COMMIT ]]; then
+    oldrev=HEAD
+  fi
+
+  files=`git diff --name-only ${oldrev}..${newrev}`
+
+  objects=`git ls-tree --full-name -r ${newrev}`
+
+  for file in $files; do
+    object=`echo -e "${objects}" | egrep "(\s)${file}\$" | awk '{ print $3 }'`
+
+    if [ -z ${object} ]; then
+      continue;
+    fi
+    git cat-file blob ${object} > ${TEMPDIR}/${file}
+    
+    if grep 'nocommit\|NOCOMMIT\|NO_COMMIT' ${TEMPDIR}/${file} ; then
+	rm -rf ${TEMPDIR} &> /dev/null
+	echo "file $file has errors in style or convention"
+	exit 1
+    fi
+  done
+done
+
+rm -rf ${TEMPDIR} &> /dev/null
+
+echo "style and convention Successful"
+exit 0
